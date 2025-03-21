@@ -2,7 +2,7 @@ from abc import ABC,abstractmethod
 from fastapi import FastAPI,HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-
+import string,random
 
 app = FastAPI()
 
@@ -11,7 +11,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client.lib_db
 book_collection = db.books
 ebook_collection = db.ebooks
-customer_collection = db.customer
+Key_collection = db.api_keys
 
 
 class BaseBook(ABC) :
@@ -201,3 +201,23 @@ async def deleteEbooks(ebook_id:str,title:str,author:str,genre:str,link:str):
   ebook = Ebook(title,author,genre,link)
   deleted_ebook = await ebook.removeEbooks(ebook_id)
   return {"message":"deleted succsessfully","deleted_ebook_id":ebook_id}
+
+#API KEYS
+#generate api key
+
+def generate_key(length=32):
+  characters = string.ascii_letters + string.digits
+  key = ''.join(random.choices(characters,k=length))
+  return key
+
+#store key
+async def store_key(key):
+  await Key_collection.insert_one({"api_key": key,"active":True})
+  return key
+
+#api caal
+@app.get("/generateKey")
+async def generateKey():
+  key = generate_key()
+  await generate_key(key)
+  return {"api_key": key}
