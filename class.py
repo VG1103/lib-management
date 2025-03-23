@@ -17,12 +17,26 @@ Key_collection = db.api_keys
 class BaseBook(ABC) :
   
   @abstractmethod
-  def addBook(self,title, author, genre):
-    pass
+  def addBook(self,title):
+    new_book = {
+      "Title":title
+    }
+    result =  book_collection.insert_one(new_book)
+    return {"message":"book successfully added","id": str(result.inserted_id)}
+
 
   @abstractmethod
   def getBook(self,id):
     pass
+  #   try:
+  #     book_object_id = ObjectId(book_id)
+  #   except ValueError as e:
+  #     raise HTTPException(status_code=400 , detail= str(e))
+  #   book = book_collection.find_one({"_id":book_object_id})
+  #   if not book:
+  #     raise HTTPException(status_code= 404, detail= "cannot find resource")
+  #   book["_id"] = str(book["_id"])
+  #   return book
 
   @abstractmethod
   def getAllBooks(self):
@@ -51,7 +65,7 @@ class Book(BaseBook):
       result = await book_collection.insert_one(new_book)
       return {"message": "Book added successfully", "id": str(result.inserted_id)}
     except Exception as e:
-      raise HTTPException(status_code=500)
+      raise HTTPException(status_code=500, detail= f"Database Error: {str(e)}")
   
   async def getBook(self,book_id ):
     try:
@@ -65,11 +79,13 @@ class Book(BaseBook):
     return book
   
   async def getAllBooks(self):
-    books = await book_collection.find().to_list(100)
-
-    for book in books:
+    try:
+      books = await book_collection.find().to_list(100)
+      for book in books:
         book["_id"] = str(book["_id"])
-    return books 
+      return books 
+    except Exception as e:
+      raise HTTPException(status_code= 500, detail=f"database error: {str(e)}")
     
   async def issueBook(self, book_id, issued_to):
     book_object_id = ObjectId(book_id)
@@ -85,23 +101,30 @@ class Book(BaseBook):
       raise HTTPException(status_code=500,detail="Error issuing book")
   
   async def returnBook(self,book_id):
-    book_object_id = ObjectId(book_id)
-    book = await book_collection.find_one({"_id": book_object_id})
-    if not book:
-      raise HTTPException(status_code=404,detail="Book not found")
-    result = await book_collection.update_one(({"_id":book_object_id}),{"$set":{"is_issued":False,"issued_to": None}})
-    if result.modified_count == 1:
-      return{"message":"Book returned successfully","book_id" : book_id}
-    else:
-      raise HTTPException(status_code=500, detail="Error returning book")
+    try:
+      book_object_id = ObjectId(book_id)
+      book = await book_collection.find_one({"_id": book_object_id})
+      if not book:
+        raise HTTPException(status_code=404,detail="Book not found")
+      result = await book_collection.update_one(({"_id":book_object_id}),{"$set":{"is_issued":False,"issued_to": None}})
+      if result.modified_count == 1:
+        return{"message":"Book returned successfully","book_id" : book_id}
+      else:
+        raise HTTPException(status_code=500, detail="Error returning book")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error returning book: {str(e)}")
     
   async def removeBook(self,book_id):
-    book_object_id = ObjectId(book_id)
-    book = await book_collection.delete_one({"_id":book_object_id})
-    book["_id"] = str(book["_id"])
-    return {"message":"book deleted successfully"}
+    try:
+      book_object_id = ObjectId(book_id)
+      book = await book_collection.delete_one({"_id":book_object_id})
+      if book.deleted_count == 1:
+        return {"message":"book deleted sucessfully","_id":book_id}
+      else:
+        raise HTTPException(status_code=404, detail="Book not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting book: {str(e)}")
   
-
 
 class Ebook(BaseBook):
   def __init__(self,title,author,genre,link):
@@ -202,6 +225,15 @@ async def deleteEbooks(ebook_id:str,title:str,author:str,genre:str,link:str):
   deleted_ebook = await ebook.removeEbooks(ebook_id)
   return {"message":"deleted succsessfully","deleted_ebook_id":ebook_id}
 
+@app.get("/authenticate")
+async def authApi(key):
+  key_check = await Key_collection.find_one({"api_key" : key})
+  if key_check:
+    return {"message": "Authentication Sucessful"}
+  else:
+    raise HTTPException(status_code=403, detail="Forbidden: Invalid API Key")
+
+
 #API KEYS
 #generate api key
 
@@ -219,5 +251,5 @@ async def store_key(key):
 @app.get("/generateKey")
 async def generateKey():
   key = generate_key()
-  await generate_key(key)
-  return {"api_key": key}
+  stored_key = await store_key(key)
+  return {"api_key": stored_key}
